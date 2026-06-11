@@ -1,0 +1,143 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AfriFlow — Stack complète Docker Compose
+#
+# Démarrage rapide :
+#   cp .env.example .env   # puis remplir les clés API
+#   cd infra && docker compose up -d --build
+#
+# Services exposés :
+#   http://localhost     → Frontend React (nginx)
+#   http://localhost:3001 → API Fastify
+#   http://localhost:8025 → MailHog (emails de dev)
+#   localhost:5432        → PostgreSQL (dev)
+#   localhost:6379        → Redis (dev)
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-api-env: &api-env
+  DATABASE_URL: postgresql://afriflow:afriflow_dev@postgres:5432/afriflow
+  REDIS_URL: redis://redis:6379
+  NODE_ENV: production
+  PORT: "3001"
+  API_URL: http://localhost:3001
+  WEB_URL: http://localhost
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: afriflow_postgres
+    environment:
+      POSTGRES_DB: afriflow
+      POSTGRES_USER: afriflow
+      POSTGRES_PASSWORD: afriflow_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U afriflow -d afriflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: afriflow_redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: afriflow_mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Interface web
+    environment:
+      MH_STORAGE: maildir
+      MH_MAILDIR_PATH: /tmp
+    restart: unless-stopped
+
+  # ── Migrations ──────────────────────────────────────────────────────────────
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.migrate
+    container_name: afriflow_migrate
+    environment:
+      DATABASE_URL: postgresql://afriflow:afriflow_dev@postgres:5432/afriflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ── Application ─────────────────────────────────────────────────────────────
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: afriflow_api
+    environment:
+      <<: *api-env
+      # Surcharger via .env (optionnel — clés API externes)
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production_use_openssl_rand_base64_64}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      FLUTTERWAVE_SECRET_KEY: ${FLUTTERWAVE_SECRET_KEY:-}
+      WAVE_API_KEY: ${WAVE_API_KEY:-}
+      WATI_BASE_URL: ${WATI_BASE_URL:-}
+      WATI_TOKEN: ${WATI_TOKEN:-}
+      CLOUDFLARE_R2_ENDPOINT: ${CLOUDFLARE_R2_ENDPOINT:-}
+      CLOUDFLARE_R2_ACCESS_KEY: ${CLOUDFLARE_R2_ACCESS_KEY:-}
+      CLOUDFLARE_R2_SECRET_KEY: ${CLOUDFLARE_R2_SECRET_KEY:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-afriflow-media}
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+    ports:
+      - "3001:3001"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    container_name: afriflow_web
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+    driver: local
+  redis_data:
+    driver: local

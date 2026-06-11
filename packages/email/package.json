@@ -1,0 +1,29 @@
+{
+  "name": "@afriflow/email",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/jwt": "10.1.0",
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^0.0.17",
+    "drizzle-kit": "0.31.10",
+    "drizzle-orm": "0.45.2",
+    "fastify": "5.8.5",
+    "react": "^18.3.1",
+    "resend": "^3.4.0",
+    "vitest": "4.1.8"
+  },
+  "devDependencies": {
+    "@afriflow/config": "*",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "typescript": "^5.5.0"
+  }
+}

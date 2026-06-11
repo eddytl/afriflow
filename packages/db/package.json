@@ -1,0 +1,27 @@
+{
+  "name": "@afriflow/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "type-check": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "fastify": "5.8.5",
+    "postgres": "^3.4.4",
+    "vitest": "4.1.8"
+  },
+  "devDependencies": {
+    "@afriflow/config": "*",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^5.5.0"
+  }
+}

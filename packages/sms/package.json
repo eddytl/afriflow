@@ -1,0 +1,17 @@
+{
+  "name": "@afriflow/sms",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@afriflow/config": "*",
+    "typescript": "^5.5.0"
+  }
+}

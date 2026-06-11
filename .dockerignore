@@ -1,0 +1,31 @@
+# Dependencies
+**/node_modules
+**/.pnp
+**/.pnp.js
+
+# Build outputs
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Dev tools
+**/.git
+**/.github
+**/.gitignore
+**/.eslintrc*
+**/.prettierrc*
+**/vitest.config*
+**/*.test.ts
+**/__tests__
+
+# OS / Editor
+**/.DS_Store
+**/*.log
+**/.vscode
+**/.idea
