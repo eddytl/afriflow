@@ -1,156 +1,265 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Plus, GripVertical } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { Plus, GripVertical, GitBranch, Pencil, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { crmApi } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
-import { DealDialog } from '@/components/dialogs/DealDialog';
-
-interface Deal {
-  id: string;
-  name: string;
-  value: number;
-  contact_name: string;
-  probability?: number;
-}
-
-interface Stage {
-  id: string;
-  name: string;
-  color: string;
-  position: number;
-  deal_count: number;
-  total_value: number;
-  deals?: Deal[];
-}
+import { formatDate } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 interface Pipeline {
   id: string;
   name: string;
-  stages: Stage[];
+  created_at: string;
+  stages: { id: string; name: string; deal_count: number }[];
 }
 
-function DealCard({ deal }: { deal: Deal }) {
+interface StageRow {
+  id: string;       // temp local id for key
+  name: string;
+}
+
+const DEFAULT_STAGES: StageRow[] = [
+  { id: '1', name: 'Premier contact établi' },
+  { id: '2', name: 'Proposition envoyée' },
+  { id: '3', name: 'Négociation' },
+  { id: '4', name: 'Deal gagné' },
+  { id: '5', name: 'Deal perdu' },
+];
+
+let stageCounter = 10;
+
+function CreatePipelineModal({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState('');
+  const [stages, setStages] = useState<StageRow[]>(DEFAULT_STAGES.map((s) => ({ ...s })));
+  const dragIdx = useRef<number | null>(null);
+  const overIdx  = useRef<number | null>(null);
+
+  const createPipeline = useMutation({
+    mutationFn: () => crmApi.createPipeline({
+      name: name.trim(),
+      stages: stages.map((s, i) => ({ name: s.name, position: i })),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pipelines'] });
+      toast({ variant: 'success', title: 'Pipeline créé' });
+      onOpenChange(false);
+      setName('');
+      setStages(DEFAULT_STAGES.map((s) => ({ ...s })));
+    },
+    onError: () => toast({ variant: 'destructive', title: 'Erreur', description: 'Impossible de créer le pipeline' }),
+  });
+
+  const addStage = () => {
+    setStages((prev) => [...prev, { id: String(++stageCounter), name: '' }]);
+  };
+
+  const removeStage = (id: string) => setStages((prev) => prev.filter((s) => s.id !== id));
+
+  const updateStage = (id: string, val: string) =>
+    setStages((prev) => prev.map((s) => (s.id === id ? { ...s, name: val } : s)));
+
+  /* ── Drag-and-drop HTML5 ── */
+  const onDragStart = (i: number) => { dragIdx.current = i; };
+  const onDragOver  = (e: React.DragEvent, i: number) => {
+    e.preventDefault();
+    overIdx.current = i;
+    if (dragIdx.current === null || dragIdx.current === i) return;
+    setStages((prev) => {
+      const next = [...prev];
+      const [item] = next.splice(dragIdx.current!, 1);
+      next.splice(i, 0, item);
+      dragIdx.current = i;
+      return next;
+    });
+  };
+  const onDragEnd = () => { dragIdx.current = null; overIdx.current = null; };
+
+  const canSave = name.trim() && stages.every((s) => s.name.trim());
+
   return (
-    <Card className="cursor-grab active:cursor-grabbing">
-      <CardContent className="p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{deal.name}</p>
-            <p className="truncate text-xs text-muted-foreground">{deal.contact_name}</p>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[480px] p-0 gap-0">
+        <DialogHeader className="px-6 pt-5 pb-0">
+          <DialogTitle className="text-base font-semibold">Créez votre pipeline</DialogTitle>
+        </DialogHeader>
+
+        <div className="px-6 py-4 space-y-5">
+          {/* Pipeline name */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Nom du pipeline</label>
+            <Input
+              placeholder="Nom"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+            />
           </div>
-          <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/50 mt-0.5" />
-        </div>
-        <div className="mt-2 flex items-center justify-between">
-          <span className="text-sm font-semibold">{formatCurrency(deal.value)}</span>
-          {deal.probability !== undefined && (
-            <Badge variant="outline" className="text-xs">{deal.probability}%</Badge>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
-function StageColumn({ stage, pipelineId, stages }: { stage: Stage; pipelineId: string; stages: Stage[] }) {
-  const [showAddDeal, setShowAddDeal] = useState(false);
+          {/* Stages */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-primary">Étapes</span>
+              <button
+                type="button"
+                onClick={addStage}
+                className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
 
-  return (
-    <div className="flex min-w-[240px] max-w-[240px] flex-col gap-2">
-      <div className="flex items-center justify-between rounded-md bg-muted px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: stage.color ?? '#6366f1' }} />
-          <span className="text-sm font-medium">{stage.name}</span>
-          <Badge variant="secondary" className="text-xs">{stage.deal_count}</Badge>
+            <div className="space-y-2">
+              {stages.map((stage, i) => (
+                <div
+                  key={stage.id}
+                  draggable
+                  onDragStart={() => onDragStart(i)}
+                  onDragOver={(e) => onDragOver(e, i)}
+                  onDragEnd={onDragEnd}
+                  className="flex items-center gap-2 cursor-default"
+                >
+                  <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/50 cursor-grab active:cursor-grabbing" />
+                  <Input
+                    className="flex-1 h-9"
+                    placeholder="Nom de l'étape"
+                    value={stage.name}
+                    onChange={(e) => updateStage(stage.id, e.target.value)}
+                  />
+                  {stages.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeStage(stage.id)}
+                      className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <span className="text-xs text-muted-foreground">{formatCurrency(Number(stage.total_value))}</span>
-      </div>
-      <div className="flex flex-col gap-2 min-h-[100px] rounded-md p-1">
-        {(stage.deals ?? []).map((deal) => (
-          <DealCard key={deal.id} deal={deal} />
-        ))}
-        <Button
-          variant="ghost" size="sm"
-          className="w-full justify-start text-muted-foreground hover:text-foreground"
-          onClick={() => setShowAddDeal(true)}
-        >
-          <Plus className="mr-1 h-3.5 w-3.5" />Ajouter un deal
-        </Button>
-      </div>
-      <DealDialog
-        open={showAddDeal}
-        onOpenChange={setShowAddDeal}
-        pipelineId={pipelineId}
-        stages={stages}
-      />
-    </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t flex justify-end gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
+          <Button
+            disabled={!canSave || createPipeline.isPending}
+            onClick={() => createPipeline.mutate()}
+          >
+            Sauvegarder
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 export function PipelinePage() {
+  const navigate = useNavigate();
+  const qc       = useQueryClient();
+  const [showCreate, setShowCreate] = useState(false);
+
   const { data, isLoading } = useQuery({ queryKey: ['pipelines'], queryFn: crmApi.pipelines });
-  const [showDeal, setShowDeal] = useState(false);
   const pipelines: Pipeline[] = data ?? [];
-  const pipeline = pipelines[0];
 
-  if (isLoading) {
-    return (
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="min-w-[240px]">
-            <Skeleton className="h-10 w-full rounded-md mb-2" />
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, j) => <Skeleton key={j} className="h-20 w-full rounded-md" />)}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
+  const deletePipeline = useMutation({
+    mutationFn: (id: string) => crmApi.deletePipeline(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pipelines'] });
+      toast({ variant: 'success', title: 'Pipeline supprimé' });
+    },
+    onError: () => toast({ variant: 'destructive', title: 'Erreur lors de la suppression' }),
+  });
 
-  if (!pipeline) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <p className="text-muted-foreground">Aucun pipeline configuré</p>
-        <Button size="sm" onClick={() => crmApi.createPipeline({ name: 'Mon pipeline' })}>
-          <Plus className="mr-2 h-4 w-4" />Créer un pipeline
-        </Button>
-      </div>
-    );
-  }
+  const columns: ColumnDef<Pipeline>[] = [
+    {
+      key: 'name',
+      label: 'Nom',
+      sortable: true,
+      render: (row) => (
+        <span
+          className="font-medium text-primary hover:underline cursor-pointer"
+          onClick={() => navigate(`/crm/pipeline/${row.id}`)}
+        >
+          {row.name}
+        </span>
+      ),
+    },
+    {
+      key: 'stages',
+      label: 'Étapes',
+      sortable: false,
+      className: 'text-muted-foreground',
+      render: (row) => {
+        const n = row.stages?.length ?? 0;
+        return `${n} étape${n !== 1 ? 's' : ''}`;
+      },
+    },
+    {
+      key: 'created_at',
+      label: 'Date de création',
+      sortable: true,
+      className: 'text-muted-foreground',
+      render: (row) => formatDate(row.created_at),
+    },
+  ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold">{pipeline.name}</h2>
-        <Button size="sm" variant="outline" onClick={() => setShowDeal(true)}>
-          <Plus className="mr-2 h-4 w-4" />Nouveau deal
-        </Button>
-      </div>
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {pipeline.stages.map((stage) => (
-          <StageColumn
-            key={stage.id}
-            stage={stage}
-            pipelineId={pipeline.id}
-            stages={pipeline.stages}
-          />
-        ))}
-        <div className="flex min-w-[240px] items-start pt-1">
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
-            <Plus className="mr-1 h-4 w-4" />Nouvelle étape
+    <>
+      <DataTable
+        title="Pipelines"
+        subtitle={`${pipelines.length} pipeline${pipelines.length !== 1 ? 's' : ''}`}
+        headerAction={
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />Créer
           </Button>
-        </div>
-      </div>
-      <DealDialog
-        open={showDeal}
-        onOpenChange={setShowDeal}
-        pipelineId={pipeline.id}
-        stages={pipeline.stages}
+        }
+        data={pipelines}
+        columns={columns}
+        isLoading={isLoading}
+        searchPlaceholder="Rechercher un pipeline…"
+        searchKeys={['name']}
+        emptyIcon={<GitBranch className="h-10 w-10" />}
+        emptyTitle="Aucun pipeline créé"
+        emptyAction={
+          <Button variant="outline" size="sm" onClick={() => setShowCreate(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />Créer le premier pipeline
+          </Button>
+        }
+        bulkActions={[
+          {
+            icon: <Trash2 className="h-4 w-4" />,
+            label: 'Supprimer',
+            variant: 'destructive',
+            onClick: (ids) => ids.forEach((id) => deletePipeline.mutate(id)),
+          },
+        ]}
+        rowActions={(row) => (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => navigate(`/crm/pipeline/${row.id}`)}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              onClick={() => deletePipeline.mutate(row.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
       />
-    </div>
+
+      <CreatePipelineModal open={showCreate} onOpenChange={setShowCreate} />
+    </>
   );
 }

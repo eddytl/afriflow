@@ -13,6 +13,7 @@ import { EmailsPage } from './pages/emails/EmailsPage';
 import { SmsPage } from './pages/SmsPage';
 import { AutomationsPage } from './pages/AutomationsPage';
 import { PipelinePage } from './pages/crm/PipelinePage';
+import { PipelineDetailPage } from './pages/crm/PipelineDetailPage';
 import { CalendarPage } from './pages/crm/CalendarPage';
 import { CalendarEventFormPage } from './pages/crm/CalendarEventFormPage';
 import { TagsPage } from './pages/crm/TagsPage';
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/crm" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="/crm/tags" element={<TagsPage />} />
           <Route path="/crm/pipeline" element={<PipelinePage />} />
+          <Route path="/crm/pipeline/:id" element={<PipelineDetailPage />} />
           <Route path="/crm/calendar" element={<CalendarPage />} />
           <Route path="/crm/calendar/new" element={<CalendarEventFormPage />} />
           <Route path="/crm/calendar/:id/edit" element={<CalendarEventFormPage />} />

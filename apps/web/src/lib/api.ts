@@ -99,11 +99,18 @@ export const emailsApi = {
 
 // ── CRM ───────────────────────────────────────────────────────────
 export const crmApi = {
-  pipelines: () => api.get('/crm/pipelines').then((r) => r.data),
-  createPipeline: (data: unknown) => api.post('/crm/pipelines', data).then((r) => r.data),
-  createDeal: (pipelineId: string, data: unknown) =>
+  pipelines:      ()                              => api.get('/crm/pipelines').then((r) => r.data),
+  getPipeline:    (id: string)                    => api.get(`/crm/pipelines/${id}`).then((r) => r.data),
+  createPipeline: (data: unknown)                 => api.post('/crm/pipelines', data).then((r) => r.data),
+  updatePipeline: (id: string, data: unknown)     => api.patch(`/crm/pipelines/${id}`, data).then((r) => r.data),
+  deletePipeline: (id: string)                    => api.delete(`/crm/pipelines/${id}`),
+  createStage:    (pipelineId: string, data: unknown) =>
+    api.post(`/crm/pipelines/${pipelineId}/stages`, data).then((r) => r.data),
+  updateStage:    (pipelineId: string, stageId: string, data: unknown) =>
+    api.patch(`/crm/pipelines/${pipelineId}/stages/${stageId}`, data).then((r) => r.data),
+  createDeal:     (pipelineId: string, data: unknown) =>
     api.post(`/crm/pipelines/${pipelineId}/deals`, data).then((r) => r.data),
-  moveDeal: (dealId: string, data: unknown) =>
+  moveDeal:       (dealId: string, data: unknown) =>
     api.patch(`/crm/pipelines/deals/${dealId}`, data).then((r) => r.data),
 };
 

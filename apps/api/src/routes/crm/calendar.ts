@@ -302,6 +302,27 @@ export default async function calendarRoutes(app: FastifyInstance) {
     return reply.status(201).send({ ...booking, event: { name: event.name, hostEmail: event.host_email } });
   });
 
+  // Toutes les réservations (cross-event)
+  app.get('/bookings', hooks, async (request) => {
+    const q = request.query as { status?: string; event_id?: string; after?: string; before?: string; limit?: string };
+    const limit = Math.min(Number(q.limit ?? 100), 500);
+    const eventId = q.event_id ?? null;
+    const status  = q.status  ?? null;
+    const after   = q.after   ?? null;
+    const before  = q.before  ?? null;
+    return sql`
+      SELECT b.*, e.name as event_name, e.duration_minutes
+      FROM calendar_bookings b
+      JOIN calendar_events e ON e.id = b.event_id
+      WHERE (${status}::text  IS NULL OR b.status    = ${status}::text)
+        AND (${eventId}::text IS NULL OR b.event_id  = ${eventId}::uuid)
+        AND (${after}::text   IS NULL OR b.start_at >= ${after}::timestamptz)
+        AND (${before}::text  IS NULL OR b.start_at <= ${before}::timestamptz)
+      ORDER BY b.start_at DESC
+      LIMIT ${limit}
+    `;
+  });
+
   // Annuler / confirmer une réservation
   app.patch('/bookings/:bid', hooks, async (request, reply) => {
     const { bid } = request.params as { bid: string };
